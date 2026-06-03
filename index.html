@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>原稿支援・送出システム v2.0 (Log Direct Parser)</title>
+    <title>みんなの減災ラボ - 原稿支援・送出システム v2.0</title>
     <style>
         :root {
             --bg-main: #222222;
@@ -11,6 +11,7 @@
             --color-text: #ffffff;
             --color-orange: #d9531e;
             
+            /* 各メニューの背景色 */
             --bg-btn-earthquake: #3d1a04;
             --bg-btn-tsunami: #052c54;
             --bg-btn-eew: #4a0d0d;
@@ -31,60 +32,95 @@
             background-color: #000;
             color: var(--color-text);
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
             width: 100vw;
             height: 100vh;
+            position: relative;
         }
 
-        /* 運用用の上部コントロールパネル */
-        #system-control {
-            background-color: #2d2d2d;
-            padding: 8px 16px;
+        /* --- 画面全体の初期選択・スタート画面 --- */
+        #setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #1a1a1a;
+            z-index: 9999;
             display: flex;
+            flex-direction: column;
+            justify-content: center;
             align-items: center;
-            gap: 15px;
-            border-bottom: 2px solid #444;
-            z-index: 100;
+            gap: 25px;
         }
 
-        .sys-btn {
-            background-color: #555;
+        .setup-title {
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            color: #fff;
+        }
+
+        .setup-title span {
+            color: var(--color-orange);
+        }
+
+        .file-mock-btn {
+            background-color: #333;
+            border: 2px dashed #555;
+            padding: 20px 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.2s;
+            text-align: center;
+            min-width: 400px;
+        }
+
+        .file-mock-btn:hover {
+            background-color: #444;
+            border-color: var(--color-orange);
+        }
+
+        #file-info {
+            font-size: 14px;
+            color: #aaa;
+            margin-top: -10px;
+            font-family: monospace;
+        }
+
+        .start-btn {
+            background-color: var(--color-orange);
             color: white;
             border: none;
-            padding: 6px 12px;
-            cursor: pointer;
-            border-radius: 4px;
-            font-size: 14px;
+            padding: 15px 60px;
+            font-size: 22px;
             font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(217, 83, 30, 0.4);
+            transition: all 0.2s;
         }
 
-        .sys-btn:hover {
-            background-color: #666;
+        .start-btn:disabled {
+            background-color: #444;
+            color: #777;
+            box-shadow: none;
+            cursor: not-allowed;
         }
 
-        #file-input {
-            display: none;
+        .start-btn:not(:disabled):hover {
+            background-color: #f15e22;
+            transform: translateY(-2px);
         }
 
-        .time-display {
-            font-family: monospace;
-            font-size: 16px;
-            background: #111;
-            padding: 4px 8px;
-            border-radius: 4px;
-            min-width: 90px;
-            text-align: center;
-        }
-
-        /* メインアプリケーション画面（image_f3acdb.png をベースに再現） */
+        /* --- メインアプリケーション画面（16:9） --- */
         #app-container {
-            flex: 1;
+            width: 100%;
+            height: 100%;
             display: flex;
             background-color: var(--bg-main);
             position: relative;
-            width: 100%;
-            height: 100%;
         }
 
         /* 左側サイドバー */
@@ -134,12 +170,12 @@
             color: white;
             padding: 0 15px;
             text-align: left;
-            cursor: pointer;
             position: relative;
-            opacity: 0.5;
+            opacity: 0.4;
             transition: opacity 0.2s;
         }
 
+        /* アクティブなメニューのハイライト */
         .menu-item.active {
             opacity: 1;
             box-shadow: inset 0 0 0 3px #fff, 0 0 15px rgba(255,255,255,0.3);
@@ -166,15 +202,18 @@
             margin-right: 15px;
             width: 35px;
             text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
-        .icon-alert::before { content: "⚠️"; }
-        .icon-wave-line::before { content: "📈"; }
+        .icon-earthquake::before { content: "⚠️"; }
+        .icon-shindo::before { content: "📈"; }
         .icon-tsunami::before { content: "🌊"; }
         .icon-observed::before { content: "∿🌊"; font-size: 18px; }
-        .icon-clock::before { content: "🕒"; }
-        .icon-bell::before { content: "🔔"; }
-        .icon-voice::before { content: "🗣️"; }
+        .icon-forecast::before { content: "🕒"; }
+        .icon-eew::before { content: "🔔"; }
+        .icon-teikei::before { content: "🗣️"; }
 
         .menu-text {
             font-size: 26px;
@@ -231,31 +270,19 @@
             overflow-y: auto;
         }
 
-        /* 警報色ハイライト設定 */
-        .bg-magenta {
-            background-color: #ff00ff;
+        /* 警報・震度等のカラーバッジ装飾 */
+        .badge {
+            padding: 2px 8px;
+            border-radius: 3px;
             color: #fff;
-            padding: 0 6px;
             margin: 0 2px;
-            border-radius: 2px;
         }
+        .badge-magenta { background-color: #ff00ff; color: #fff; }
+        .badge-red { background-color: #ff0000; color: #fff; }
+        .badge-yellow { background-color: #ffff00; color: #000; }
+        .badge-max-shindo { background-color: #d9531e; color: #fff; }
 
-        .bg-red {
-            background-color: #ff0000;
-            color: #fff;
-            padding: 0 6px;
-            margin: 0 2px;
-            border-radius: 2px;
-        }
-
-        .bg-yellow {
-            background-color: #ffff00;
-            color: #000;
-            padding: 0 6px;
-            margin: 0 2px;
-            border-radius: 2px;
-        }
-
+        /* 右下コントロール */
         .bottom-controls {
             display: flex;
             justify-content: flex-end;
@@ -281,26 +308,39 @@
             font-size: 22px;
             min-width: 60px;
         }
+
+        /* 画面右上の開発・確認用タイムスタンプ表示（配信画面に映したくない場合は opacity: 0 にしてください） */
+        #debug-timeline-status {
+            position: absolute;
+            top: 15px;
+            right: 40px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
     </style>
 </head>
 <body>
 
-    <!-- 運用コントロールパネル -->
-    <div id="system-control">
-        <button class="sys-btn" onclick="document.getElementById('file-input').click()">📁 タイムラインログ読込</button>
-        <input type="file" id="file-input" accept=".txt" onchange="loadLogFile(event)">
+    <!-- 画面全体の初期選択画面 -->
+    <div id="setup-screen">
+        <div class="setup-title">みんなの減災ラボ <span>原稿支援システム</span></div>
         
-        <button class="sys-btn" id="play-btn" onclick="togglePlay()">▶ 再生</button>
-        <button class="sys-btn" onclick="stopTimeline()">■ 停止</button>
-        
-        <div style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
-            <span id="current-tag-display" style="font-size: 14px; color: #aaa; font-family: monospace;">TAG: NONE</span>
-            <span>経過時間:</span>
-            <div class="time-display" id="timeline-clock">00:00:00</div>
+        <div class="file-mock-btn" onclick="document.getElementById('log-file-input').click()">
+            📁 タイムラインログファイルを選択 (.txt)
         </div>
+        <input type="file" id="log-file-input" accept=".txt" style="display: none;" onchange="handleFileSelect(event)">
+        
+        <div id="file-info">ファイルが選択されていません</div>
+        
+        <button class="start-btn" id="start-simulation-btn" disabled onclick="startSimulation()">
+            シミュレーション開始
+        </button>
     </div>
 
-    <!-- メインアプリケーション -->
+    <!-- メイン表示領域（image_f3acdb.png に基づくレイアウト） -->
     <div id="app-container">
         
         <!-- 左サイドバー -->
@@ -312,11 +352,11 @@
                 </div>
                 <div class="menu-list">
                     <button class="menu-item menu-earthquake" id="menu-地震">
-                        <div class="menu-icon icon-alert"></div>
+                        <div class="menu-icon icon-earthquake"></div>
                         <div class="menu-text">地震</div>
                     </button>
                     <button class="menu-item menu-earthquake" id="menu-震度">
-                        <div class="menu-icon icon-wave-line"></div>
+                        <div class="menu-icon icon-shindo"></div>
                         <div class="menu-text">震度</div>
                     </button>
                     <button class="menu-item menu-tsunami" id="menu-津波">
@@ -328,15 +368,15 @@
                         <div class="menu-text">観測津波</div>
                     </button>
                     <button class="menu-item menu-tsunami" id="menu-到達予想">
-                        <div class="menu-icon icon-clock"></div>
+                        <div class="menu-icon icon-forecast"></div>
                         <div class="menu-text">到達予想</div>
                     </button>
                     <button class="menu-item menu-eew" id="menu-EEW">
-                        <div class="menu-icon icon-bell"></div>
+                        <div class="menu-icon icon-eew"></div>
                         <div class="menu-text">EEW</div>
                     </button>
                     <button class="menu-item menu-teikei" id="menu-定型">
-                        <div class="menu-icon icon-voice"></div>
+                        <div class="menu-icon icon-teikei"></div>
                         <div class="menu-text">定型</div>
                     </button>
                 </div>
@@ -347,180 +387,369 @@
             </div>
         </div>
 
-        <!-- 右メイン画面 -->
+        <!-- 右メインコンテンツ画面 -->
         <div id="main-content">
+            <!-- 開発・確認用ステータス -->
+            <div id="debug-timeline-status">
+                <span id="debug-tag">TAG: NONE</span>
+                <span id="debug-time">TIME: 00:00:00</span>
+            </div>
+
             <div>
                 <div class="content-header">
                     <div class="header-indicator"></div>
-                    <div class="content-title" id="content-title">待機中</div>
+                    <div class="content-title" id="content-title">地震情報</div>
                 </div>
                 <div class="text-display-area" id="text-display">
-上の「タイムラインログ読込」ボタンから、作成したログテキストファイルを選択してください。
-タイムラインの構成に従って自動で原稿化・送出が行われます。
+                    シミュレーションが開始されると、ここに原稿テキストが自動送出されます。
                 </div>
             </div>
 
+            <!-- 右下制御ボタン -->
             <div class="bottom-controls">
-                <button class="ctrl-btn">呼びかけ</button>
-                <button class="ctrl-btn">地震切替</button>
-                <button class="ctrl-btn btn-arrow" onclick="navigateScenario(-1)">◀</button>
-                <button class="ctrl-btn btn-arrow" onclick="navigateScenario(1)">▶</button>
+                <button class="ctrl-btn" onclick="togglePausePlay()" id="ui-play-pause-btn">一時停止</button>
+                <button class="ctrl-btn" onclick="resetToSetup()">終了</button>
+                <button class="ctrl-btn btn-arrow" onclick="navigateEvent(-1)">◀</button>
+                <button class="ctrl-btn btn-arrow" onclick="navigateEvent(1)">▶</button>
             </div>
         </div>
 
     </div>
 
     <script>
-        let scenarioEvents = [];
-        let currentSeconds = 0;
-        let timerInterval = null;
-        let isPlaying = false;
-        let currentIdx = -1;
+        // グローバルタイムライン管理
+        let timelineEvents = [];
+        let elapsedSeconds = 0;
+        let timelineTimer = null;
+        let isSimulationRunning = false;
+        let currentEventIdx = -1;
 
-        // 右下の時計 (現実時間)
+        // 右下の時計リアルタイム更新
         function updateLiveClock() {
             const now = new Date();
-            document.getElementById('live-clock').innerHTML = 
-                `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日<br>` +
-                `${String(now.getHours()).padStart(2,'0')}時${String(now.getMinutes()).padStart(2,'0')}分${String(now.getSeconds()).padStart(2,'0')}秒`;
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const date = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('live-clock').innerHTML = `${year}年${month}月${date}日<br>${hours}時${minutes}分${seconds}秒`;
         }
         setInterval(updateLiveClock, 1000);
         updateLiveClock();
 
-        // 経過秒数を hh:mm:ss に変換
-        function formatHHMMSS(totalSec) {
-            const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
-            const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
-            const s = String(totalSec % 60).padStart(2, '0');
+        // hh:mm:ss 文字列を秒数に変換する
+        function timeToSeconds(timeStr) {
+            const parts = timeStr.split(':');
+            if (parts.length !== 3) return 0;
+            return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+        }
+
+        // 秒数を hh:mm:ss 形式に変換する
+        function secondsToTimeString(totalSeconds) {
+            const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const s = String(totalSeconds % 60).padStart(2, '0');
             return `${h}:${m}:${s}`;
         }
 
-        // タイムラインログの独自パース処理
-        function parseRawLog(text) {
-            const timelineMatch = text.match(/<timeline>([\s\S]*?)<\/timeline>/);
-            if (!timelineMatch) return [];
+        // ファイル選択時の処理
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-            const lines = timelineMatch[1].trim().split('\n');
-            let startTimeInSec = null;
-            const tempEvents = [];
+            document.getElementById('file-info').innerText = `読み込み中: ${file.name}`;
 
-            lines.forEach(line => {
-                const m = line.match(/(\d{2}):(\d{2}):(\d{2})\[(.*?)\]/);
-                if (m) {
-                    const sec = parseInt(m[1])*3600 + parseInt(m[2])*60 + parseInt(m[3]);
-                    const tag = m[4].trim();
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const parsed = parseRawTimelineLog(text);
+                
+                if (parsed && parsed.length > 0) {
+                    timelineEvents = parsed;
+                    document.getElementById('file-info').innerText = `読込成功: ${file.name} (イベント数: ${timelineEvents.length})`;
+                    document.getElementById('start-simulation-btn').disabled = false;
+                } else {
+                    document.getElementById('file-info').innerText = `エラー: 有効なタイムライン構造、または[start]定義が見つかりません。`;
+                    document.getElementById('start-simulation-btn').disabled = true;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 提示された独自のログテキストを完璧に分解・構造化するパース処理
+        function parseRawTimelineLog(fullText) {
+            // 1. <timeline>ブロックの抽出
+            const timelineBlockMatch = fullText.match(/<timeline>([\s\S]*?)<\/timeline>/);
+            if (!timelineBlockMatch) return null;
+
+            const timelineLines = timelineBlockMatch[1].trim().split('\n');
+            let startTimeSeconds = null;
+            const eventSchedule = [];
+
+            // タイムラインスケジュールの抽出
+            timelineLines.forEach(line => {
+                const match = line.trim().match(/^(\d{2}:\d{2}:\d{2})\[(.*?)\]$/);
+                if (match) {
+                    const sec = timeToSeconds(match[1]);
+                    const tag = match[2].trim();
+
                     if (tag === 'start') {
-                        startTimeInSec = sec;
+                        startTimeSeconds = sec;
                     } else {
-                        tempEvents.push({ tag: tag, absSec: sec });
+                        eventSchedule.push({ tag: tag, absoluteSeconds: sec });
                     }
                 }
             });
 
-            if (startTimeInSec === null) return [];
+            if (startTimeSeconds === null) return null;
 
-            const parsedEvents = [];
-            tempEvents.forEach(ev => {
-                ev.seconds = ev.absSec - startTimeInSec;
-                if (ev.seconds < 0) return; 
+            const finalEvents = [];
 
-                // タグデータの抽出 (<tag>ブロック)
+            // 2. 各タグブロックの内容を紐付け解析
+            eventSchedule.forEach(ev => {
+                const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
+                if (targetSeconds < 0) return; // 開始前のイベントは除外
+
+                // 各種タグブロック（例: <e01>～次のタグまたは末尾まで）の中身を正規表現で探す
                 const escapedTag = ev.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const reg = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<[a-z0-9]+>|$)', 'i');
-                const contentMatch = text.match(reg);
+                const blockRegex = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<[a-z0-9]+>|$)', 'i');
+                const blockMatch = fullText.match(blockRegex);
 
-                if (contentMatch) {
-                    ev.data = parseDataFields(contentMatch[1].trim());
-                    ev.script = generateScript(ev.tag, ev.data);
-                    parsedEvents.push(ev);
+                if (blockMatch) {
+                    const blockContent = blockMatch[1].trim();
+                    const dataFields = {};
+                    
+                    // 各種フィールド（キー[値]）をパース
+                    const fieldRegex = /([a-z]+)\[([\s\S]*?)\]/g;
+                    let fieldMatch;
+                    while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
+                        dataFields[fieldMatch[1]] = fieldMatch[2].trim();
+                    }
+
+                    // タグの頭文字に応じたメニュー判定
+                    const typeChar = ev.tag.charAt(0).toLowerCase();
+                    let targetMenu = "地震";
+                    let displayTitle = "地震情報";
+
+                    if (typeChar === 'e') {
+                        targetMenu = "EEW";
+                        displayTitle = "緊急地震速報（警報）";
+                    } else if (typeChar === 's') {
+                        // sXXタグの場合、genre[02]なら地震情報、それ以外は震度速報に自動振り分け
+                        if (dataFields.genre === '02') {
+                            targetMenu = "地震";
+                            displayTitle = "地震情報";
+                        } else {
+                            targetMenu = "震度";
+                            displayTitle = "震度速報";
+                        }
+                    } else if (typeChar === 't') {
+                        // tXXタグの場合、pointsデータ内に「午後」などの時刻指定が含まれていれば到達予想タブ、なければ津波情報
+                        if (dataFields.points && (dataFields.points.includes('午後') || dataFields.points.includes('午前') || dataFields.points.includes('分'))) {
+                            targetMenu = "到達予想";
+                            displayTitle = "津波到達予想時刻";
+                        } else {
+                            targetMenu = "津波";
+                            displayTitle = "津波警報・注意報";
+                        }
+                    } else if (typeChar === 'k') {
+                        targetMenu = "観測津波";
+                        displayTitle = "津波観測速報";
+                    }
+
+                    // パースした内部データからキャスター用・画面用の原稿を動的に組み立て
+                    const formattedHtml = buildScriptHtml(ev.tag, dataFields);
+
+                    finalEvents.push({
+                        tag: ev.tag,
+                        triggerSeconds: targetSeconds,
+                        menu: targetMenu,
+                        title: displayTitle,
+                        html: formattedHtml
+                    });
                 }
             });
 
-            return parsedEvents.sort((a, b) => a.seconds - b.seconds);
+            // トリガー秒数の昇順に並び替え
+            return finalEvents.sort((a, b) => a.triggerSeconds - b.triggerSeconds);
         }
 
-        // タグ内の個別フィールド分解
-        function parseDataFields(blockText) {
-            const fields = {};
-            const regex = /([a-z]+)\[([\s\S]*?)\]/g;
-            let match;
-            while ((match = regex.exec(blockText)) !== null) {
-                fields[match[1]] = match[2].trim();
-            }
-            return fields;
-        }
-
-        // ログ情報から自動的にNHK風のアナウンス原稿とUI設定を生成
-        function generateScript(tag, data) {
-            let menu = "地震";
-            let title = "地震情報";
-            let text = "";
-
-            const type = tag.charAt(0); // e, s, t, k
+        // 各タグの内部パラメータから、放送用テキストレイアウトを構成する
+        function buildScriptHtml(tag, fields) {
+            let html = "";
+            const type = tag.charAt(0).toLowerCase();
 
             if (type === 'e') {
-                menu = "EEW";
-                title = "緊急地震速報 (警報)";
-                text = `【緊急地震速報】\n震源は ${data.hypocenter} です。\n次の地域では、強い揺れに警戒してください。\n\n警戒地域：\n${data.area.replace(/　/g, '、')}`;
-            } 
+                html += `【緊急地震速報 警報発表】\n強烈な揺れに警戒してください。\n\n`;
+                if (fields.hypocenter) html += `震源地：<span class="badge badge-max-shindo">${fields.hypocenter}</span>\n`;
+                if (fields.area) html += `警戒区域：\n${fields.area.replace(/　/g, '、')}\n\n`;
+                html += `倒れやすい家具から離れてください。身の安全を確保してください。`;
+            }
             else if (type === 's') {
-                const isFinal = (data.genre === '02');
-                menu = isFinal ? "地震" : "震度";
-                title = isFinal ? "地震情報 (震源・震度確定)" : "震度速報";
-                
-                let pointsStr = data.points ? data.points.replace(/\t/g, '').trim() : "";
-                // 読みやすく改行を整形
-                pointsStr = pointsStr.replace(/(\d\+?|[-ー])\[/g, '\n■ 震度$1：\n　').replace(/\]/g, '');
-
-                text = `【震度速報】\n${data.time ? data.time : '先ほど'}、強い地震がありました。\n`;
+                const isFinal = (fields.genre === '02');
                 if (isFinal) {
-                    text += `震源地は ${data.hypocenter}、深さは ${data.depth}、規模を示すマグニチュードは ${data.magnitude} と発表されました。\n`;
+                    html += `【地震情報 確定報】\n`;
+                    html += `午後Ｘ時Ｘ分ごろ、地震がありました。\n`;
+                    html += `震源地：${fields.hypocenter}\n`;
+                    html += `深さ：約${fields.depth}　規模：マグニチュード ${fields.magnitude}\n`;
+                    html += `この地震による津波の心配は後ほどお伝えする津波情報を確認してください。\n`;
+                } else {
+                    html += `【震度速報】\n先ほど、強い地震がありました。最大震度は現在集計中です。\n`;
                 }
-                text += `\n各地の震度は以下の通りです。\n${pointsStr}`;
-            } 
+
+                if (fields.points) {
+                    html += `\n各地の震度情報は以下の通りです。\n`;
+                    let pts = fields.points.replace(/\t/g, '').trim();
+                    // 震度数を強調バッジ化
+                    pts = pts.replace(/7\[/g, '<span class="badge badge-max-shindo">震度７</span>\n　')
+                             .replace(/6\+\[/g, '<span class="badge badge-magenta">震度６強</span>\n　')
+                             .replace(/6-\[/g, '<span class="badge badge-magenta">震度６弱</span>\n　')
+                             .replace(/5\+\[/g, '<span class="badge badge-red">震度５強</span>\n　')
+                             .replace(/5-\[/g, '<span class="badge badge-red">震度５弱</span>\n　')
+                             .replace(/4\[/g, '<span class="badge badge-yellow" style="color:#000;">震度４</span>\n　')
+                             .replace(/\]/g, '\n');
+                    html += pts;
+                }
+            }
             else if (type === 't') {
-                menu = "津波";
-                title = "津波情報";
-                
-                let pointsStr = data.points ? data.points.replace(/\t/g, '').trim() : "";
-                // 大津波警報などのキーワードを強調表示用タグへ一括置換
-                pointsStr = pointsStr
-                    .replace(/\[大津波警報\]/g, ' 【大津波警報】')
-                    .replace(/\[津波警報\]/g, ' 【津波警報】')
-                    .replace(/\[津波注意報\]/g, ' 【津波注意報】')
-                    .replace(/\[/g, ' (')
-                    .replace(/\]/g, ')');
-
-                text = `【津波情報】\n現在、各地の沿岸に津波警報・注意報が発表されています。\n\n${pointsStr}`;
-            } 
+                html += `【津波警報・注意報】\nただちに海岸や河口付近から離れ、高い場所へ避難してください！\n\n`;
+                if (fields.points) {
+                    let pts = fields.points.replace(/\t/g, '').trim();
+                    pts = pts.replace(/\[大津波警報\]/g, ' 🚨<span class="badge badge-magenta">大津波警報</span>')
+                             .replace(/\[津波警報\]/g, ' 🔴<span class="badge badge-red">津波警報</span>')
+                             .replace(/\[津波注意報\]/g, ' 🟡<span class="badge badge-yellow">津波注意報</span>')
+                             .replace(/\[/g, ' (')
+                             .replace(/\]/g, ')\n');
+                    html += pts;
+                }
+            }
             else if (type === 'k') {
-                menu = "観測津波";
-                title = "津波観測情報";
-                
-                let pointsStr = data.points ? data.points.replace(/\t/g, '').trim() : "";
-                pointsStr = pointsStr.replace(/\[/g, ' (').replace(/\]/g, ')');
-
-                text = `【津波の観測速報】\n沿岸で実際に観測された津波の高さです。\n\n${pointsStr}`;
+                html += `【津波の観測速報】\n沿岸の津波観測局で実際に観測された津波の高さです。\n\n`;
+                if (fields.points) {
+                    let pts = fields.points.replace(/\t/g, '').trim();
+                    pts = pts.replace(/\[/g, ' → 【').replace(/\]/g, '】\n');
+                    html += pts;
+                }
+                html += `\n津波は第2波、第3波と何度も押し寄せ、後からさらに高くなることがあります。`;
             }
 
-            // 特殊タグを装飾用HTMLに置換
-            text = text.replace(/【大津波警報】/g, '<span class="bg-magenta">大津波警報</span>');
-            text = text.replace(/【津波警報】/g, '<span class="bg-red">津波警報</span>');
-            text = text.replace(/【津波注意報】/g, '<span class="bg-yellow">津波注意報</span>');
-
-            return { menu, title, text };
+            // 矢印の上昇表現などを視覚化
+            html = html.replace(/⬆︎/g, '🔺(上昇中)');
+            return html;
         }
 
-        // ファイルロード
-        function loadLogFile(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        // シミュレーションメインタイマー同期処理
+        function syncSimulationFrame(seconds) {
+            document.getElementById('debug-time').innerText = `TIME: ${secondsToTimeString(seconds)}`;
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                scenarioEvents = parseRawLog(e.target.result);
-                stopTimeline();
-                if (scenarioEvents.length > 0) {
-                    document.getElementById('text-display').innerHTML = `ログファイルを正常にパースしました。(総イベント数: ${scenarioEvents.length}個)\n再生ボタンを押すと、16:07:06を基準としたシミュレーション送出が始まります。`;
+            let targetIdx = -1;
+            // 現在の経過秒数以下で、最も新しいイベントのインデックスを特定
+            for (let i = 0; i < timelineEvents.length; i++) {
+                if (timelineEvents[i].triggerSeconds <= seconds) {
+                    targetIdx = i;
                 } else {
-                    document.getElementById('text-display').innerText = "ログのパースに失敗しました。タイムライン形式およびI encountered an error doing what you asked. Could you try again?
+                    break;
+                }
+            }
+
+            // 新しいイベントに切り替わった場合のみ、画面描画を更新する
+            if (targetIdx !== -1 && targetIdx !== currentEventIdx) {
+                currentEventIdx = targetIdx;
+                const ev = timelineEvents[currentEventIdx];
+
+                document.getElementById('debug-tag').innerText = `TAG: ${ev.tag} (枠開始 ${ev.triggerSeconds}秒)`;
+                document.getElementById('content-title').innerText = ev.title;
+                document.getElementById('text-display').innerHTML = ev.html;
+
+                // 左サイドメニューのactiveクラス付け替え
+                document.querySelectorAll('.menu-item').forEach(btn => btn.classList.remove('active'));
+                const activeBtn = document.getElementById(`menu-${ev.menu}`);
+                if (activeBtn) {
+                    activeBtn.classList.add('active');
+                }
+            }
+        }
+
+        // 毎秒実行のインタバル処理
+        function simulationTick() {
+            elapsedSeconds++;
+            syncSimulationFrame(elapsedSeconds);
+        }
+
+        // シミュレーション開始ボタン起動
+        function startSimulation() {
+            if (timelineEvents.length === 0) return;
+            
+            // 設定初期化
+            elapsedSeconds = 0;
+            currentEventIdx = -1;
+            isSimulationRunning = true;
+
+            // スタート画面の非表示化
+            document.getElementById('setup-screen').style.display = 'none';
+
+            // 初期位置(0秒時点)を描画同期
+            syncSimulationFrame(0);
+
+            // タイマースタート
+            document.getElementById('ui-play-pause-btn').innerText = "一時停止";
+            timelineTimer = setInterval(simulationTick, 1000);
+        }
+
+        // 下部ボタンによる一時停止・再開
+        function togglePausePlay() {
+            if (!isSimulationRunning) return;
+
+            const btn = document.getElementById('ui-play-pause-btn');
+            if (timelineTimer) {
+                clearInterval(timelineTimer);
+                timelineTimer = null;
+                btn.innerText = "再生";
+            } else {
+                timelineTimer = setInterval(simulationTick, 1000);
+                btn.innerText = "一時停止";
+            }
+        }
+
+        // 終了してセットアップ画面に戻る
+        function resetToSetup() {
+            if (timelineTimer) {
+                clearInterval(timelineTimer);
+                timelineTimer = null;
+            }
+            isSimulationRunning = false;
+            document.getElementById('setup-screen').style.display = 'flex';
+        }
+
+        // 手動イベント送り（◀ / ▶ ボタン）
+        function navigateEvent(direction) {
+            if (timelineEvents.length === 0) return;
+
+            let nextIdx = currentEventIdx + direction;
+            if (nextIdx < 0) nextIdx = 0;
+            if (nextIdx >= timelineEvents.length) nextIdx = timelineEvents.length - 1;
+
+            // 該当イベントのトリガー秒数までタイムラインを強制ジャンプさせる
+            elapsedSeconds = timelineEvents[nextIdx].triggerSeconds;
+            syncSimulationFrame(elapsedSeconds);
+        }
+
+        // キーボードショートカット
+        window.addEventListener('keydown', function(e) {
+            if (!isSimulationRunning) return;
+            
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePausePlay();
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                navigateEvent(1);
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                navigateEvent(-1);
+            }
+        });
+    </script>
+</body>
+</html>
