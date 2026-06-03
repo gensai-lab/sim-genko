@@ -483,8 +483,14 @@
 
         function timeToSeconds(timeStr) {
             const parts = timeStr.split(':');
-            if (parts.length !== 3) return 0;
-            return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+            if (parts.length === 2) {
+                // hh:mm 形式の場合
+                return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60;
+            } else if (parts.length === 3) {
+                // hh:mm:ss 形式の場合
+                return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
+            }
+            return 0;
         }
 
         function secondsToTimeString(totalSeconds) {
@@ -537,8 +543,10 @@
             // 1. まずタイムライン定義行をすべて解析
             lines.forEach(line => {
                 const trimmed = line.trim();
-                // 12:15:00[start] や 12:15:19[e01] の形式をキャプチャ
-                const match = trimmed.match(/^(\d{2}:\d{2}:\d{2})\s*\[\s*([a-zA-Z0-9]+)\s*\]$/);
+                if (!trimmed) return;
+
+                // 時:分 や 時:分:秒 の形式（[タグ]の前にスペースがあっても許容）
+                const match = trimmed.match(/^(\d{2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9]+)\s*\]/);
                 if (match) {
                     const sec = timeToSeconds(match[1]);
                     const tag = match[2].trim();
@@ -560,7 +568,7 @@
                 const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
                 if (targetSeconds < 0) return; // start時間より前のデータはスキップ
 
-                // <e01> 〜 次のタグの始まり「<」または末尾までを取得する正規表現
+                // <tag> 〜 次のタグの始まり「<」または末尾までを取得する正規表現
                 const escapedTag = ev.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const blockRegex = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<|$)', 'i');
                 const blockMatch = cleanText.match(blockRegex);
