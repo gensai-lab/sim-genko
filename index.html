@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>みんなの減災ラボ - 原稿支援・送出システム v2.1</title>
+    <title>みんなの減災ラボ - 原稿支援・送出システム v2.2</title>
     
-    <!-- Google Fonts から BIZ UDPゴシック を読み込み -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
@@ -29,7 +28,6 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            /* フォント指定を BIZ UDPGothic に変更 */
             font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
             -webkit-user-select: none;
             user-select: none;
@@ -98,6 +96,9 @@
             color: #ffdd44;
             font-weight: bold;
             text-align: center;
+            max-width: 800px;
+            word-break: break-all;
+            line-height: 1.4;
         }
 
         /* タイムラインプレビュー表示エリア */
@@ -403,7 +404,7 @@
             <div>
                 <div class="brand-header">
                     <div class="brand-logo">みんなの減災ラボ</div>
-                    <div class="brand-version">v2.1</div>
+                    <div class="brand-version">v2.2</div>
                 </div>
                 <div class="menu-list">
                     <button class="menu-item menu-earthquake" id="menu-地震">
@@ -518,12 +519,12 @@
                 
                 if (parsed && parsed.length > 0) {
                     timelineEvents = parsed;
-                    document.getElementById('file-info').innerText = `正常に読み込みました:「${file.name}」`;
+                    document.getElementById('file-info').innerText = `正常に読み込みました:「${file.name}」 (${timelineEvents.length}個のイベント検出)`;
                     
                     renderPreviewList();
                     document.getElementById('start-simulation-btn').disabled = false;
                 } else {
-                    document.getElementById('file-info').innerText = `❌ エラー: <timeline>構造、または[start]基準タグが見つかりませんでした。テキストの内容を確認してください。`;
+                    document.getElementById('file-info').innerText = `❌ エラー: <timeline>構造、または[start]基準タグが見つかりませんでした。テキスト内の表記（大文字小文字やカッコの形）を確認してください。`;
                     document.getElementById('preview-area').style.display = 'none';
                     document.getElementById('start-simulation-btn').disabled = true;
                 }
@@ -532,8 +533,10 @@
         }
 
         function parseRawTimelineLog(fullText) {
+            // 改行コードを一律\nに変換し、前後の不要な空白を除去
             const cleanText = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             
+            // <timeline> ~ </timeline> の抽出（大文字小文字を無視、前後のスペースも許容）
             const timelineMatch = cleanText.match(/<timeline>([\s\S]*?)<\/timeline>/i);
             if (!timelineMatch) return null;
 
@@ -545,7 +548,8 @@
                 const trimmed = line.trim();
                 if (!trimmed) return;
 
-                const match = trimmed.match(/^(\d{2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9]+)\s*\]/);
+                // 16:07:06[start] や 16:07:25  [e01] などの形式を柔軟にマッチング
+                const match = trimmed.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9_\-]+)\s*\]/);
                 if (match) {
                     const sec = timeToSeconds(match[1]);
                     const tag = match[2].trim();
@@ -558,14 +562,16 @@
                 }
             });
 
+            // start位置が定義されていない場合は解析失敗とする
             if (startTimeSeconds === null) return null;
 
             const finalEvents = [];
 
             schedule.forEach(ev => {
                 const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
-                if (targetSeconds < 0) return;
+                if (targetSeconds < 0) return; // startより前のイベントは除外
 
+                // 個別データブロックの抽出。例: <e01> ~ 次の < もしくは 末尾まで
                 const escapedTag = ev.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const blockRegex = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<|$)', 'i');
                 const blockMatch = cleanText.match(blockRegex);
@@ -574,12 +580,14 @@
                     const blockContent = blockMatch[1].trim();
                     const dataFields = {};
                     
+                    // hypocenter[相模湾] などのフィールドを抽出
                     const fieldRegex = /([a-zA-Z0-9_]+)\s*\[([\s\S]*?)\]/g;
                     let fieldMatch;
                     while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
                         dataFields[fieldMatch[1]] = fieldMatch[2].trim();
                     }
 
+                    // 分類ロジック
                     const typeChar = ev.tag.charAt(0).toLowerCase();
                     let targetMenu = "地震";
                     let displayTitle = "地震情報";
@@ -612,7 +620,7 @@
                     if (dataFields.hypocenter) summaryText += `震源:${dataFields.hypocenter} `;
                     if (dataFields.magnitude) summaryText += `M${dataFields.magnitude} `;
                     if (dataFields.max_shindo || dataFields.shindo) summaryText += `最大震度:${dataFields.max_shindo || dataFields.shindo} `;
-                    if (!summaryText && dataFields.points) summaryText += dataFields.points.substring(0, 30) + "...";
+                    if (!summaryText && dataFields.points) summaryText += dataFields.points.substring(0, 30).replace(/\n/g, ' ') + "...";
                     if (!summaryText) summaryText = "データブロック格納完了";
 
                     const formattedHtml = buildScriptHtml(ev.tag, dataFields);
@@ -648,7 +656,9 @@
                     html += `【地震情報 確定報】\n`;
                     html += `地震の詳しい情報です。\n`;
                     html += `震源地：${fields.hypocenter}\n`;
-                    html += `深さ：約${fields.depth}　規模：マグニチュード ${fields.magnitude}\n`;
+                    if (fields.depth) html += `深さ：約${fields.depth}　`;
+                    if (fields.magnitude) html += `規模：マグニチュード ${fields.magnitude}`;
+                    html += `\n`;
                 } else {
                     html += `【震度速報】\n先ほど、強い地震がありました。\n`;
                 }
