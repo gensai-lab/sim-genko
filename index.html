@@ -4,6 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>みんなの減災ラボ - 原稿支援・送出システム v2.1</title>
+    
+    <!-- Google Fonts から BIZ UDPゴシック を読み込み -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+
     <style>
         :root {
             --bg-main: #222222;
@@ -23,7 +29,8 @@
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: "A-OTF UD Shin Go Pr6", "UD Shin Go", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+            /* フォント指定を BIZ UDPGothic に変更 */
+            font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
             -webkit-user-select: none;
             user-select: none;
         }
@@ -484,10 +491,8 @@
         function timeToSeconds(timeStr) {
             const parts = timeStr.split(':');
             if (parts.length === 2) {
-                // hh:mm 形式の場合
                 return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60;
             } else if (parts.length === 3) {
-                // hh:mm:ss 形式の場合
                 return parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(parts[2], 10);
             }
             return 0;
@@ -515,7 +520,6 @@
                     timelineEvents = parsed;
                     document.getElementById('file-info').innerText = `正常に読み込みました:「${file.name}」`;
                     
-                    // プレビュー表示の構築
                     renderPreviewList();
                     document.getElementById('start-simulation-btn').disabled = false;
                 } else {
@@ -527,12 +531,9 @@
             reader.readAsText(file);
         }
 
-        // 改行コードの違いや余分なスペースを考慮した強固なパース処理
         function parseRawTimelineLog(fullText) {
-            // 改行コードを統一してトリミング
             const cleanText = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             
-            // <timeline> ブロックを大文字小文字不問で頑丈に抽出
             const timelineMatch = cleanText.match(/<timeline>([\s\S]*?)<\/timeline>/i);
             if (!timelineMatch) return null;
 
@@ -540,12 +541,10 @@
             let startTimeSeconds = null;
             const schedule = [];
 
-            // 1. まずタイムライン定義行をすべて解析
             lines.forEach(line => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
 
-                // 時:分 や 時:分:秒 の形式（[タグ]の前にスペースがあっても許容）
                 const match = trimmed.match(/^(\d{2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9]+)\s*\]/);
                 if (match) {
                     const sec = timeToSeconds(match[1]);
@@ -563,12 +562,10 @@
 
             const finalEvents = [];
 
-            // 2. スケジュールに登録されたタグに対応する内容を各ブロックから探す
             schedule.forEach(ev => {
                 const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
-                if (targetSeconds < 0) return; // start時間より前のデータはスキップ
+                if (targetSeconds < 0) return;
 
-                // <tag> 〜 次のタグの始まり「<」または末尾までを取得する正規表現
                 const escapedTag = ev.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const blockRegex = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<|$)', 'i');
                 const blockMatch = cleanText.match(blockRegex);
@@ -577,14 +574,12 @@
                     const blockContent = blockMatch[1].trim();
                     const dataFields = {};
                     
-                    // 各種フィールド（例: hypocenter[震度地], points[...]）を抽出
                     const fieldRegex = /([a-zA-Z0-9_]+)\s*\[([\s\S]*?)\]/g;
                     let fieldMatch;
                     while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
                         dataFields[fieldMatch[1]] = fieldMatch[2].trim();
                     }
 
-                    // タグの種類分けとUI分類
                     const typeChar = ev.tag.charAt(0).toLowerCase();
                     let targetMenu = "地震";
                     let displayTitle = "地震情報";
@@ -613,7 +608,6 @@
                         displayTitle = "津波観測速報";
                     }
 
-                    // プレビュー用の一行説明を生成
                     let summaryText = "";
                     if (dataFields.hypocenter) summaryText += `震源:${dataFields.hypocenter} `;
                     if (dataFields.magnitude) summaryText += `M${dataFields.magnitude} `;
@@ -638,7 +632,6 @@
             return finalEvents.sort((a, b) => a.triggerSeconds - b.triggerSeconds);
         }
 
-        // 送出原稿構築
         function buildScriptHtml(tag, fields) {
             let html = "";
             const type = tag.charAt(0).toLowerCase();
@@ -698,7 +691,6 @@
             return html;
         }
 
-        // 読み込まれた内容を画面上でプレビューする処理
         function renderPreviewList() {
             const container = document.getElementById('preview-rows-container');
             container.innerHTML = ""; 
@@ -706,7 +698,6 @@
             timelineEvents.forEach(ev => {
                 const row = document.createElement('div');
                 
-                // タグの種類ごとにクラスを割り振り
                 let typeClass = "eq";
                 if(ev.tag.charAt(0).toLowerCase() === 'e') typeClass = "eew";
                 if(ev.tag.charAt(0).toLowerCase() === 't' || ev.tag.charAt(0).toLowerCase() === 'k') typeClass = "tnm";
