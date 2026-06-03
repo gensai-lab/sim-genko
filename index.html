@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>原稿支援・送出システム v1.0</title>
+    <style>
+        :root {
+            --bg-main: #222222;
+            --bg-sidebar: #121212;
+            --color-text: #ffffff;
+            --color-orange: #d9531e;
+            
+            /* 各種メニューの通常時背景色 */
+            --bg-btn-earthquake: #3d1a04;
+            --bg-btn-tsunami: #052c54;
+            --bg-btn-eew: #4a0d0d;
+            --bg-btn-teikei: #4a3e0d;
+            --bg-btn-ctrl: #4a4a4a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: "A-OTF UD Shin Go Pr6", "UD Shin Go", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            background-color: #000;
+            color: var(--color-text);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* 運用用の上部コントロールパネル（配信画面の外側） */
+        #system-control {
+            background-color: #2d2d2d;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 2px solid #444;
+            z-index: 100;
+        }
+
+        .sys-btn {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .sys-btn:hover {
+            background-color: #666;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .time-display {
+            font-family: monospace;
+            font-size: 16px;
+            background: #111;
+            padding: 4px 8px;
+            border-radius: 4px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* メインアプリケーション画面（16:9想定） */
+        #app-container {
+            flex: 1;
+            display: flex;
+            background-color: var(--bg-main);
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 左側サイドバー */
+        #sidebar {
+            width: 320px;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            justify-content: space-between;
+            border-right: 1px solid #333;
+        }
+
+        .brand-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .brand-logo {
+            font-size: 22px;
+            font-weight: 900;
+            letter-spacing: 1px;
+        }
+
+        .brand-version {
+            font-size: 14px;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            height: 55px;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            padding: 0 15px;
+            text-align: left;
+            cursor: pointer;
+            position: relative;
+            transition: opacity 0.2s;
+        }
+
+        .menu-item:opacity {
+            opacity: 0.6;
+        }
+
+        /* カテゴリごとの配色 */
+        .menu-earthquake { background-color: var(--bg-btn-earthquake); }
+        .menu-tsunami { background-color: var(--bg-btn-tsunami); }
+        .menu-eew { background-color: var(--bg-btn-eew); }
+        .menu-teikei { background-color: var(--bg-btn-teikei); }
+
+        /* アクティブ（現在選択中）のハイライト表示 */
+        .menu-item.active {
+            opacity: 1;
+            box-shadow: inset 0 0 0 3px #fff, 0 0 15px rgba(255,255,255,0.3);
+        }
+
+        .menu-item.active::after {
+            content: '';
+            position: absolute;
+            right: -20px;
+            top: 50%;
+            transform: translateY(-50%);
+            border-left: 10px solid var(--color-orange);
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+
+        .menu-icon {
+            font-size: 24px;
+            margin-right: 15px;
+            width: 35px;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 画像内のアイコン形状を簡易再現 */
+        .icon-alert::before { content: "⚠️"; }
+        .icon-wave-line::before { content: "📈"; }
+        .icon-tsunami::before { content: "🌊"; }
+        .icon-observed::before { content: "∿🌊"; font-size: 18px; }
+        .icon-clock::before { content: "🕒"; }
+        .icon-bell::before { content: "🔔"; }
+        .icon-voice::before { content: "🗣️"; }
+
+        .menu-text {
+            font-size: 26px;
+            font-weight: bold;
+            letter-spacing: 4px;
+        }
+
+        .sidebar-footer {
+            margin-top: 20px;
+            font-size: 18px;
+            line-height: 1.4;
+            font-family: monospace;
+            color: #ccc;
+        }
+
+        /* 右側メインコンテンツエリア */
+        #main-content {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            position: relative;
+        }
+
+        .content-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .header-indicator {
+            width: 10px;
+            height: 35px;
+            background-color: var(--color-orange);
+            border-radius: 2px;
+        }
+
+        .content-title {
+            font-size: 36px;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .text-display-area {
+            flex: 1;
+            font-size: 28px;
+            line-height: 1.7;
+            letter-spacing: 1px;
+            white-space: pre-wrap;
+            font-weight: bold;
+            padding-right: 40px;
+        }
+
+        /* テキスト内の特殊強調表示クラス */
+        .bg-magenta {
+            background-color: #ff00ff;
+            color: #fff;
+            padding: 0 4px;
+        }
+
+        .bg-red {
+            background-color: #ff0000;
+            color: #fff;
+            padding: 0 4px;
+        }
+
+        /* 右下コントロールボタン群 */
+        .bottom-controls {
+            display: flex;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .ctrl-btn {
+            background-color: var(--bg-btn-ctrl);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 24px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 100px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .ctrl-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .btn-arrow {
+            font-size: 22px;
+            min-width: 60px;
+            padding: 10px 15px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="system-control">
+        <button class="sys-btn" onclick="document.getElementById('file-input').click()">📁 シナリオ読込</button>
+        <input type="file" id="file-input" accept=".txt" onchange="loadScenarioFile(event)">
+        
+        <button class="sys-btn" id="play-btn" onclick="togglePlay()">▶ 再生</button>
+        <button class="sys-btn" onclick="stopTimeline()">■ 停止</button>
+        
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+            <span>タイムラインカウント:</span>
+            <div class="time-display" id="timeline-clock">00:00</div>
+        </div>
+    </div>
+
+    <div id="app-container">
+        
+        <div id="sidebar">
+            <div>
+                <div class="brand-header">
+                    <div class="brand-logo">みんなの減災ラボ</div>
+                    <div class="brand-version">v1.0</div>
+                </div>
+                <div class="menu-list">
+                    <button class="menu-item menu-earthquake active" id="menu-地震">
+                        <div class="menu-icon icon-alert"></div>
+                        <div class="menu-text">地震</div>
+                    </button>
+                    <button class="menu-item menu-earthquake" id="menu-震度">
+                        <div class="menu-icon icon-wave-line"></div>
+                        <div class="menu-text">震度</div>
+                    </button>
+                    <button class="menu-item menu-tsunami" id="menu-津波">
+                        <div class="menu-icon icon-tsunami"></div>
+                        <div class="menu-text">津波</div>
+                    </button>
+                    <button class="menu-item menu-tsunami" id="menu-観測津波">
+                        <div class="menu-icon icon-observed"></div>
+                        <div class="menu-text">観測津波</div>
+                    </button>
+                    <button class="menu-item menu-tsunami" id="menu-到達予想">
+                        <div class="menu-icon icon-clock"></div>
+                        <div class="menu-text">到達予想</div>
+                    </button>
+                    <button class="menu-item menu-eew" id="menu-EEW">
+                        <div class="menu-icon icon-bell"></div>
+                        <div class="menu-text">EEW</div>
+                    </button>
+                    <button class="menu-item menu-teikei" id="menu-定型">
+                        <div class="menu-icon icon-voice"></div>
+                        <div class="menu-text">定型</div>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer" id="live-clock">
+                20XX年XX月XX日<br>XX時XX分XX秒
+            </div>
+        </div>
+
+        <div id="main-content">
+            <div>
+                <div class="content-header">
+                    <div class="header-indicator"></div>
+                    <div class="content-title" id="content-title">地震情報</div>
+                </div>
+                <div class="text-display-area" id="text-display">
+                    ファイルが読み込まれていません。上のボタンからシナリオ（.txt）を読み込んでください。
+                </div>
+            </div>
+
+            <div class="bottom-controls">
+                <button class="ctrl-btn" onclick="triggerManualAction('呼びかけ')">呼びかけ</button>
+                <button class="ctrl-btn" onclick="triggerManualAction('地震切替')">地震切替</button>
+                <button class="ctrl-btn btn-arrow" onclick="navigateScenario(-1)">◀</button>
+                <button class="ctrl-btn btn-arrow" onclick="navigateScenario(1)">▶</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // グローバル変数
+        let scenarioData = [];
+        let currentSeconds = 0;
+        let timerInterval = null;
+        let isPlaying = false;
+        let currentIdx = -1;
+
+        // 時計機能のリアルタイム更新
+        function updateLiveClock() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const date = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            document.getElementById('live-clock').innerHTML = 
+                `${year}年${month}月${date}日<br>${hours}時${minutes}分${seconds}秒`;
+        }
+        setInterval(updateLiveClock, 1000);
+        updateLiveClock();
+
+        // タイムライン用時計の表記整形
+        function formatTimelineTime(totalSeconds) {
+            const mins = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+            const secs = String(totalSeconds % 60).padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        // シナリオファイルのパース
+        function parseScenarioText(text) {
+            // [00:00] などの記述毎にブロック分割
+            const blocks = text.split(/(?=\[\d{2}:\d{2}\])/);
+            const parsed = [];
+
+            for (const block of blocks) {
+                const lines = block.split(/\r?\n/);
+                if (lines.length === 0) continue;
+
+                const timeMatch = lines[0].match(/\[(\d{2}):(\d{2})\]/);
+                if (!timeMatch) continue;
+
+                const mins = parseInt(timeMatch
