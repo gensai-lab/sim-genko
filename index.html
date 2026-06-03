@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>みんなの減災ラボ - 原稿支援・送出システム v2.5</title>
+    <title>みんなの減災ラボ - 原稿支援・送出システム v2.6</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -404,7 +404,7 @@
             <div>
                 <div class="brand-header">
                     <div class="brand-logo">みんなの減災ラボ</div>
-                    <div class="brand-version">v2.5</div>
+                    <div class="brand-version">v2.6</div>
                 </div>
                 <div class="menu-list">
                     <button class="menu-item menu-earthquake" id="menu-地震">
@@ -517,40 +517,49 @@
                 const text = e.target.result;
                 const parsed = parseRawTimelineLog(text);
                 
-                if (parsed && parsed.length > 0) {
-                    timelineEvents = parsed;
+                if (parsed && parsed.status === "success" && parsed.data.length > 0) {
+                    timelineEvents = parsed.data;
                     document.getElementById('file-info').innerText = `正常に読み込みました:「${file.name}」 (${timelineEvents.length}個のイベント検出)`;
                     
                     renderPreviewList();
                     document.getElementById('start-simulation-btn').disabled = false;
                 } else {
-                    document.getElementById('file-info').innerText = `❌ エラー: <timeline>構造、または[start]基準タグが見つかりませんでした。テキスト内の表記（大文字小文字やカッコの形）を確認してください。`;
+                    let errMsg = `❌ 解析エラー: `;
+                    if (parsed && parsed.reason) {
+                        errMsg += parsed.reason;
+                    } else {
+                        errMsg += `データが見つかりませんでした。`;
+                    }
+                    document.getElementById('file-info').innerText = errMsg;
                     document.getElementById('preview-area').style.display = 'none';
                     document.getElementById('start-simulation-btn').disabled = true;
                 }
             };
-            reader.readAsText(file);
+            // UTF-8でファイルを明示的に読み込む
+            reader.readAsText(file, "UTF-8");
         }
 
         function parseRawTimelineLog(fullText) {
-            // 改行コードを一律\nにし、タブ文字等も標準化
+            // 改行コードの差異・制御文字を完全にクリア
             const cleanText = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             
-            // <timeline> ~ </timeline> の中身を確実に切り抜く
+            // <timeline>タグの検出
             const timelineMatch = cleanText.match(/<timeline>([\s\S]*?)<\/timeline>/i);
-            if (!timelineMatch) return null;
+            if (!timelineMatch) {
+                return { status: "error", reason: "ファイル内に <timeline> ～ </timeline> 構造が見つかりません。" };
+            }
 
             const lines = timelineMatch[1].split('\n');
             let startTimeSeconds = null;
             const schedule = [];
 
             // 1. タイムラインスケジュールの抽出
-            lines.forEach(line => {
-                const trimmed = line.trim();
-                if (!trimmed) return;
+            for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (!trimmed) continue;
 
-                // 時刻[タグ]の並びを厳密に抽出
-                const match = trimmed.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9_\-]+)\s*\]/);
+                // 行頭や行末に余分なスペースがあっても時刻と[タグ]を抽出できるよう前方の条件を緩和
+                const match = trimmed.match(/(\d{1,2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9_\-]+)\s*\]/);
                 if (match) {
                     const sec = timeToSeconds(match[1]);
                     const tag = match[2].trim();
@@ -561,28 +570,33 @@
                         schedule.push({ tag: tag, absoluteTimeStr: match[1], absoluteSeconds: sec });
                     }
                 }
-            });
+            }
 
-            if (startTimeSeconds === null) return null;
+            if (startTimeSeconds === null) {
+                return { status: "error", reason: "<timeline> 内に基準点となる時刻の [start] タグが定義されていません。（例: 16:07:06[start]）" };
+            }
 
             const finalEvents = [];
 
-            // 2. 抽出したスケジュールに紐づく個別データブロック (<e01>等) を全探索で切り出す
+            // 2. 抽出したスケジュールに紐づく個別データブロック (<e01>等) を抽出
             schedule.forEach(ev => {
                 const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
-                if (targetSeconds < 0) return; // startより前の過去イベントは無視
+                if (targetSeconds < 0) return; // startより前のイベントは除外
 
-                // タグの開始位置 <tag> を検索
-                const openTag = `<${ev.tag}>`;
-                const startIdx = cleanText.indexOf(openTag);
-                if (startIdx === -1) return;
+                // タグの開始位置 <tag> を大文字小文字無視でインデックス検索
+                const openTag = `<${ev.tag.toLowerCase()}>`;
+                const lowerText = cleanText.toLowerCase();
+                const startIdx = lowerText.indexOf(openTag);
+                if (startIdx === -1) return; // タグブロックがない場合はスキップ
 
                 const contentStart = startIdx + openTag.length;
                 
-                // 次の有効なブロックタグ(<[a-z])か、ファイル末尾までをコンテンツ領域とする
+                // 次の有効なブロックタグ(<)か、またはファイル末尾、もしくは</timeline>までをコンテンツ領域とする
                 let nextBlockIdx = cleanText.length;
                 const remainText = cleanText.substring(contentStart);
-                const nextTagMatch = remainText.match(/<[a-zA-Z0-9_\-]+>/);
+                
+                // 次の <記号 から始まる任意の英数字タグを探索
+                const nextTagMatch = remainText.match(/<[a-zA-Z0-9_\-\/]+/);
                 if (nextTagMatch && nextTagMatch.index !== undefined) {
                     nextBlockIdx = contentStart + nextTagMatch.index;
                 }
@@ -591,8 +605,7 @@
                 const dataFields = {};
                 
                 // key[value] の解析ロジック
-                // 改行や複数の値（pointsの複数行データなど）を維持するため、最短マッチ[^\]]ではなく
-                // 次の有効なキー、もしくはブロック終了までを柔軟にキャプチャする形式に強化
+                // 改行や複数行のテキストデータを安全に確保するための正規表現
                 const fieldRegex = /([a-zA-Z0-9_]+)\s*\[([\s\S]*?)\](?=\s*[a-zA-Z0-9_]+\s*\[|\s*$)/g;
                 let fieldMatch;
                 while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
@@ -648,7 +661,7 @@
                 });
             });
 
-            return finalEvents.sort((a, b) => a.triggerSeconds - b.triggerSeconds);
+            return { status: "success", data: finalEvents.sort((a, b) => a.triggerSeconds - b.triggerSeconds) };
         }
 
         function buildScriptHtml(tag, fields) {
