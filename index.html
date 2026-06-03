@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>みんなの減災ラボ - 原稿支援・送出システム v2.2</title>
+    <title>みんなの減災ラボ - 原稿支援・送出システム v2.5</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -404,7 +404,7 @@
             <div>
                 <div class="brand-header">
                     <div class="brand-logo">みんなの減災ラボ</div>
-                    <div class="brand-version">v2.2</div>
+                    <div class="brand-version">v2.5</div>
                 </div>
                 <div class="menu-list">
                     <button class="menu-item menu-earthquake" id="menu-地震">
@@ -533,10 +533,10 @@
         }
 
         function parseRawTimelineLog(fullText) {
-            // 改行コードを一律\nに変換し、前後の不要な空白を除去
+            // 改行コードを一律\nにし、タブ文字等も標準化
             const cleanText = fullText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
             
-            // <timeline> ~ </timeline> の抽出（大文字小文字を無視、前後のスペースも許容）
+            // <timeline> ~ </timeline> の中身を確実に切り抜く
             const timelineMatch = cleanText.match(/<timeline>([\s\S]*?)<\/timeline>/i);
             if (!timelineMatch) return null;
 
@@ -544,11 +544,12 @@
             let startTimeSeconds = null;
             const schedule = [];
 
+            // 1. タイムラインスケジュールの抽出
             lines.forEach(line => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
 
-                // 16:07:06[start] や 16:07:25  [e01] などの形式を柔軟にマッチング
+                // 時刻[タグ]の並びを厳密に抽出
                 const match = trimmed.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*\[\s*([a-zA-Z0-9_\-]+)\s*\]/);
                 if (match) {
                     const sec = timeToSeconds(match[1]);
@@ -562,79 +563,89 @@
                 }
             });
 
-            // start位置が定義されていない場合は解析失敗とする
             if (startTimeSeconds === null) return null;
 
             const finalEvents = [];
 
+            // 2. 抽出したスケジュールに紐づく個別データブロック (<e01>等) を全探索で切り出す
             schedule.forEach(ev => {
                 const targetSeconds = ev.absoluteSeconds - startTimeSeconds;
-                if (targetSeconds < 0) return; // startより前のイベントは除外
+                if (targetSeconds < 0) return; // startより前の過去イベントは無視
 
-                // 個別データブロックの抽出。例: <e01> ~ 次の < もしくは 末尾まで
-                const escapedTag = ev.tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const blockRegex = new RegExp('<' + escapedTag + '>([\\s\\S]*?)(?=<|$)', 'i');
-                const blockMatch = cleanText.match(blockRegex);
+                // タグの開始位置 <tag> を検索
+                const openTag = `<${ev.tag}>`;
+                const startIdx = cleanText.indexOf(openTag);
+                if (startIdx === -1) return;
 
-                if (blockMatch) {
-                    const blockContent = blockMatch[1].trim();
-                    const dataFields = {};
-                    
-                    // hypocenter[相模湾] などのフィールドを抽出
-                    const fieldRegex = /([a-zA-Z0-9_]+)\s*\[([\s\S]*?)\]/g;
-                    let fieldMatch;
-                    while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
-                        dataFields[fieldMatch[1]] = fieldMatch[2].trim();
-                    }
-
-                    // 分類ロジック
-                    const typeChar = ev.tag.charAt(0).toLowerCase();
-                    let targetMenu = "地震";
-                    let displayTitle = "地震情報";
-
-                    if (typeChar === 'e') {
-                        targetMenu = "EEW";
-                        displayTitle = "緊急地震速報（警報）";
-                    } else if (typeChar === 's') {
-                        if (dataFields.genre === '02') {
-                            targetMenu = "地震";
-                            displayTitle = "地震情報";
-                        } else {
-                            targetMenu = "震度";
-                            displayTitle = "震度速報";
-                        }
-                    } else if (typeChar === 't') {
-                        if (dataFields.points && (dataFields.points.includes('午後') || dataFields.points.includes('午前') || dataFields.points.includes('分'))) {
-                            targetMenu = "到達予想";
-                            displayTitle = "津波到達予想時刻";
-                        } else {
-                            targetMenu = "津波";
-                            displayTitle = "津波警報・注意報";
-                        }
-                    } else if (typeChar === 'k') {
-                        targetMenu = "観測津波";
-                        displayTitle = "津波観測速報";
-                    }
-
-                    let summaryText = "";
-                    if (dataFields.hypocenter) summaryText += `震源:${dataFields.hypocenter} `;
-                    if (dataFields.magnitude) summaryText += `M${dataFields.magnitude} `;
-                    if (dataFields.max_shindo || dataFields.shindo) summaryText += `最大震度:${dataFields.max_shindo || dataFields.shindo} `;
-                    if (!summaryText && dataFields.points) summaryText += dataFields.points.substring(0, 30).replace(/\n/g, ' ') + "...";
-                    if (!summaryText) summaryText = "データブロック格納完了";
-
-                    const formattedHtml = buildScriptHtml(ev.tag, dataFields);
-
-                    finalEvents.push({
-                        tag: ev.tag,
-                        absoluteTimeStr: ev.absoluteTimeStr,
-                        triggerSeconds: targetSeconds,
-                        menu: targetMenu,
-                        title: displayTitle,
-                        summary: summaryText,
-                        html: formattedHtml
-                    });
+                const contentStart = startIdx + openTag.length;
+                
+                // 次の有効なブロックタグ(<[a-z])か、ファイル末尾までをコンテンツ領域とする
+                let nextBlockIdx = cleanText.length;
+                const remainText = cleanText.substring(contentStart);
+                const nextTagMatch = remainText.match(/<[a-zA-Z0-9_\-]+>/);
+                if (nextTagMatch && nextTagMatch.index !== undefined) {
+                    nextBlockIdx = contentStart + nextTagMatch.index;
                 }
+
+                const blockContent = cleanText.substring(contentStart, nextBlockIdx).trim();
+                const dataFields = {};
+                
+                // key[value] の解析ロジック
+                // 改行や複数の値（pointsの複数行データなど）を維持するため、最短マッチ[^\]]ではなく
+                // 次の有効なキー、もしくはブロック終了までを柔軟にキャプチャする形式に強化
+                const fieldRegex = /([a-zA-Z0-9_]+)\s*\[([\s\S]*?)\](?=\s*[a-zA-Z0-9_]+\s*\[|\s*$)/g;
+                let fieldMatch;
+                while ((fieldMatch = fieldRegex.exec(blockContent)) !== null) {
+                    dataFields[fieldMatch[1].trim()] = fieldMatch[2].trim();
+                }
+
+                // 分類ロジック
+                const typeChar = ev.tag.charAt(0).toLowerCase();
+                let targetMenu = "地震";
+                let displayTitle = "地震情報";
+
+                if (typeChar === 'e') {
+                    targetMenu = "EEW";
+                    displayTitle = "緊急地震速報（警報）";
+                } else if (typeChar === 's') {
+                    if (dataFields.genre === '02') {
+                        targetMenu = "地震";
+                        displayTitle = "地震情報";
+                    } else {
+                        targetMenu = "震度";
+                        displayTitle = "震度速報";
+                    }
+                } else if (typeChar === 't') {
+                    if (dataFields.points && (dataFields.points.includes('午後') || dataFields.points.includes('午前') || dataFields.points.includes('分'))) {
+                        targetMenu = "到達予想";
+                        displayTitle = "津波到達予想時刻";
+                    } else {
+                        targetMenu = "津波";
+                        displayTitle = "津波警報・注意報";
+                    }
+                } else if (typeChar === 'k') {
+                    targetMenu = "観測津波";
+                    displayTitle = "津波観測速報";
+                }
+
+                let summaryText = "";
+                if (dataFields.hypocenter) summaryText += `震源:${dataFields.hypocenter} `;
+                if (dataFields.magnitude) summaryText += `M${dataFields.magnitude} `;
+                if (dataFields.max_shindo || dataFields.shindo) summaryText += `最大震度:${dataFields.max_shindo || dataFields.shindo} `;
+                if (!summaryText && dataFields.points) summaryText += dataFields.points.substring(0, 30).replace(/\n/g, ' ') + "...";
+                if (!summaryText) summaryText = "データブロック格納完了";
+
+                const formattedHtml = buildScriptHtml(ev.tag, dataFields);
+
+                finalEvents.push({
+                    tag: ev.tag,
+                    absoluteTimeStr: ev.absoluteTimeStr,
+                    triggerSeconds: targetSeconds,
+                    menu: targetMenu,
+                    title: displayTitle,
+                    summary: summaryText,
+                    html: formattedHtml
+                });
             });
 
             return finalEvents.sort((a, b) => a.triggerSeconds - b.triggerSeconds);
@@ -647,7 +658,7 @@
             if (type === 'e') {
                 html += `【緊急地震速報 警報発表】\n強烈な揺れに警戒してください。\n\n`;
                 if (fields.hypocenter) html += `震源地：<span class="badge badge-max-shindo">${fields.hypocenter}</span>\n`;
-                if (fields.area) html += `警戒区域：\n${fields.area.replace(/　/g, '、')}\n\n`;
+                if (fields.area) html += `警戒区域：\n${fields.area.replace(/　/g, '、').replace(/[\n\s]+/g, '、')}\n\n`;
                 html += `倒れやすい家具から離れてください。身の安全を確保してください。`;
             }
             else if (type === 's') {
@@ -665,7 +676,7 @@
 
                 if (fields.points) {
                     html += `\n各地の震度情報は以下の通りです。\n`;
-                    let pts = fields.points.replace(/\t/g, '').trim();
+                    let pts = fields.points.trim();
                     pts = pts.replace(/7\[/g, '<span class="badge badge-max-shindo">震度７</span>\n　')
                              .replace(/6\+\[/g, '<span class="badge badge-magenta">震度６強</span>\n　')
                              .replace(/6-\[/g, '<span class="badge badge-magenta">震度６弱</span>\n　')
@@ -679,7 +690,7 @@
             else if (type === 't') {
                 html += `【津波警報・注意報】\nただちに海岸や河口付近から離れ、高い場所へ避難してください！\n\n`;
                 if (fields.points) {
-                    let pts = fields.points.replace(/\t/g, '').trim();
+                    let pts = fields.points.trim();
                     pts = pts.replace(/\[大津波警報\]/g, ' 🚨<span class="badge badge-magenta">大津波警報</span>')
                              .replace(/\[津波警報\]/g, ' 🔴<span class="badge badge-red">津波警報</span>')
                              .replace(/\[津波注意報\]/g, ' 🟡<span class="badge badge-yellow">津波注意報</span>')
@@ -691,7 +702,7 @@
             else if (type === 'k') {
                 html += `【津波の観測速報】\n沿岸で実際に観測されている津波の高さです。\n\n`;
                 if (fields.points) {
-                    let pts = fields.points.replace(/\t/g, '').trim();
+                    let pts = fields.points.trim();
                     pts = pts.replace(/\[/g, ' → 【').replace(/\]/g, '】\n');
                     html += pts;
                 }
